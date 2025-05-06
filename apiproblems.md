@@ -13,3 +13,9 @@ import _pydrofoil.types
 ```
 
 raises exception
+
+# may 6
+
+pydoc _pydrofoil.sailtypes is not helpful
+
+would be cool for testing to be able to create sailtypes
