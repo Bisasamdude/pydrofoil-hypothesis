@@ -1,6 +1,6 @@
 import pytest
-import _pydrofoil
 from pydrofoilhypothesis import pydrofoilhypothesis
+import _pydrofoil
 m = _pydrofoil.RISCV64()
 
 def test_smoke_test_bitvector():
@@ -24,3 +24,22 @@ def test_generate_bool():
     strategy = pydrofoilhypothesis.hypothesis_from_pydrofoil_type(typ)
     val = strategy.example()
     assert val is True or val is False
+    
+def test_generate_MachineInt():
+    typ =  m.lowlevel.wF.sail_type.arguments[0]
+    strategy = pydrofoilhypothesis.hypothesis_from_pydrofoil_type(typ)
+    val = strategy.example()
+    assert -2**31 <= val <= 2 ** 31 
+    
+def test_generate_Enum():
+    typ =  m.lowlevel.vitype_mnemonic_forwards.sail_type.arguments[0]
+    strategy = pydrofoilhypothesis.hypothesis_from_pydrofoil_type(typ)
+    val = strategy.example()
+    assert val
+    
+def test_generate_Unit():
+    typ =  m.lowlevel.Unit.sail_type.arguments[0]
+    strategy = pydrofoilhypothesis.hypothesis_from_pydrofoil_type(typ)
+    val = strategy.example()
+    assert val is ()
+    
