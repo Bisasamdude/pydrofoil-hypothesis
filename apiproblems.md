@@ -19,3 +19,7 @@ raises exception
 pydoc _pydrofoil.sailtypes is not helpful
 
 would be cool for testing to be able to create sailtypes
+
+# may 13
+
+`_pydrofoil.sailtypes.Unit` fehlt!
