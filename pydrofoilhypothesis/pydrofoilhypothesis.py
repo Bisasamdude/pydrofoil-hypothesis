@@ -85,8 +85,6 @@ def hypothesis_from_pydrofoil_type(typ, machine):
         return gen_bitvector(typ)
     elif isinstance(typ, sailtypes.BigFixedBitVector):
         return gen_bigbitvector(typ)
-    elif '.FVec' in str(typ):
-        return gen_bitvector(typ)#TODO
     elif isinstance(typ, sailtypes.Bool):
         return st.booleans()
     elif isinstance(typ, sailtypes.MachineInt):
@@ -116,7 +114,7 @@ def hypothesis_from_pydrofoil_type(typ, machine):
             for (cls, constructor_typ) in typ.constructors
         ]
         return gen_Union(classes, strategies, machine)
-    elif ".Vec" in str(typ):  # TODO: fix when pydrofoil is fixed
+    elif ".Vec" in str(typ) or '.FVec' in str(typ):  # TODO: fix when pydrofoil is fixed
         strategy = hypothesis_from_pydrofoil_type(typ.of, machine)
         return gen_Vec(strategy)
 
@@ -131,9 +129,5 @@ def hypothesis_from_pydrofoil_type(typ, machine):
 @st.composite
 def random_register_values(draw, machine):
     register_names = machine.register_info()
-    for name, typ in register_names:
-        if '_pydrofoil.types.FVec' in str(typ):
-            typ=typ.of
-            print(typ)
     return {name : hypothesis_from_pydrofoil_type(typ, machine) for (name, typ) in register_names }
     
