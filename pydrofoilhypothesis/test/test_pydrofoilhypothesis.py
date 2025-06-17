@@ -185,7 +185,47 @@ def test_smoke_all_classes():
             unsupported_types.add(typ)
     assert not unsupported_types
     
-    
-@given(pydrofoilhypothesis.random_register_values(m))    
+
+registerStrucTyp=[typ for (name,typ) in m.register_info() if name == 'misa']
+registerStrucStrategy=pydrofoilhypothesis.hypothesis_from_pydrofoil_type(registerStrucTyp[0], m)
+@given(registerStrucStrategy)
+def test_registerStruc(val):
+    assert isinstance(val, _pydrofoil.bitvector)
+    assert len(val) == 64
+
+FVecTyp = dict(m.register_info())['mhpmevent']
+FVecStrategy = pydrofoilhypothesis.hypothesis_from_pydrofoil_type(FVecTyp, m)
+
+@given(FVecStrategy)
+def test_FVec(val):
+    assert len(val) == 32
+    assert all(isinstance(element, _pydrofoil.bitvector) for element in val)
+    assert {len(element) for element in val} == {64}
+
+
+FVecTypTLB = dict(m.register_info())['tlb']
+FVecTLBStrategy = pydrofoilhypothesis.hypothesis_from_pydrofoil_type(FVecTypTLB, m)
+
+@given(FVecTLBStrategy)
+def test_FVecTLB(val):
+    assert len(val) == 64
+
+def test_default_register_values():
+    for name, typ in m.register_info():
+        pydrofoilhypothesis.default_value(typ, m) # does not crash
+
+def test_default_register_values2():
+    for name, typ in m.register_info():
+        typ_default = pydrofoilhypothesis.default_value(typ, m) 
+        typ_normal = pydrofoilhypothesis.hypothesis_from_pydrofoil_type(typ, m).example()
+        assert typ_default.__class__ == typ_normal.__class__
+
+include_registers = [name for (name, typ) in m.register_info()[0:5]]
+always_default_registers = [name for (name, typ) in m.register_info()[7:8]]
+@given(pydrofoilhypothesis.random_register_values(m, include_registers, always_default_registers))    
 def test_random_register_values(values):
-    assert values
+    assert len(values) == len(m.register_info())
+    for name, value in values.items():
+        m.write_register(name, value)
+        assert m.read_register(name) == value
+    

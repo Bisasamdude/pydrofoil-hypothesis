@@ -22,7 +22,7 @@ cur_privilege_strategy = pydrofoilhypothesis.hypothesis_from_pydrofoil_type(
 def test_itype_stays_in_supervisor_mode(args, cur_privilege_value, register_value):
     immediate, rs, rd, iop = args
     instruction = m.types.ITYPE(*args)
-    if rs != 0:  # TODO: change to 'if rs:' after bitvector.__bool__ is fixed
+    if rs:  
         m.lowlevel.wX(rs.unsigned(), register_value)
     m.write_register("cur_privilege", cur_privilege_value)
     oldvalues = [m.lowlevel.rX(i) for i in range(32)]

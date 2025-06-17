@@ -1,6 +1,7 @@
 
 # april 29
 
+DONE
 ```
 >>>> m.lowlevel.bit_str.sail_type.arguments[0]
 <_pydrofoil.types.SmallFixedBitVector object at 0x00007f33ebebc7d0>
@@ -18,9 +19,11 @@ raises exception
 
 pydoc _pydrofoil.sailtypes is not helpful
 
+PARTLY DONE
 would be cool for testing to be able to create sailtypes
 
 # may 13
+
 
 `_pydrofoil.sailtypes.Unit` fehlt!
 
@@ -30,6 +33,7 @@ Unterschied zwischen types.ITYPE (nimmt viele parameter, aber der Typ ist "tuple
 
 read_register/write_register bonus feature "did you mean"
 
+DONE
 BUG: pydrofoil.bitvector.__bool__ gibt True zurück, selbst für den 0 bitvector
 
 # may 27
@@ -41,3 +45,7 @@ _pydrofoil.sailtypes.Vec fehlt
 sail-function should have a name
 
 machines brauchen eine reset-funktion
+
+# June 10
+
+Some<TLB> should be instantiatable with a struct instance
