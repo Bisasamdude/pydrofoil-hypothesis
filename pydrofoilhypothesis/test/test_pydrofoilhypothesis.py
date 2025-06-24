@@ -2,7 +2,7 @@ import pytest
 from pydrofoilhypothesis import pydrofoilhypothesis
 import _pydrofoil
 
-from hypothesis import given
+from hypothesis import given, strategies as st, example
 
 m = _pydrofoil.RISCV64()
 typ = m.lowlevel.bit_str.sail_type.arguments[0]
@@ -228,4 +228,44 @@ def test_random_register_values(values):
     for name, value in values.items():
         m.write_register(name, value)
         assert m.read_register(name) == value
+
+
+@st.composite
+def random_register_values_random_include_exclude(draw, machine):
+    include_registers = draw(st.lists(st.sampled_from([name for (name, typ) in m.register_info()])))
+    always_default_registers = draw(st.lists(st.sampled_from([name for (name, typ) in m.register_info()])))
+    values = draw(pydrofoilhypothesis.random_register_values(machine, include_registers, always_default_registers))
+    return values
     
+
+        
+@given(random_register_values_random_include_exclude(m))    
+def test_random_register_values_random_include_exclude(values):
+    assert len(values) == len(m.register_info())
+    for name, value in values.items():
+        m.write_register(name, value)
+        assert m.read_register(name) == value
+    
+
+def _find_all_sail_types():
+    typs = set()
+    for name in dir(m.types):
+        value = getattr(m.types, name)
+        if hasattr(value, 'sail_type'):
+            typs.add(value.sail_type)
+    for name in dir(m.lowlevel):
+        value = getattr(m.lowlevel, name)
+        for typ in value.sail_type.arguments:
+            typs.add(typ)
+        typs.add(value.sail_type.result)
+    typs = list(typs)
+    typs.sort(key=lambda element: len(str(element)))
+    return typs
+
+sailtyps = _find_all_sail_types()
+
+@given(st.data())
+def test_smoke_more(data):
+    typ = data.draw(st.sampled_from(sailtyps))
+    value = data.draw(pydrofoilhypothesis.hypothesis_from_pydrofoil_type(typ, m))
+    pydrofoilhypothesis.default_value(typ, m)

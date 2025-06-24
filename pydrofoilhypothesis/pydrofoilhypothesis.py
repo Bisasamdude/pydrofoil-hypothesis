@@ -3,10 +3,6 @@ from hypothesis import given, strategies as st
 import _pydrofoil
 
 
-@st.composite
-def gen_bitvector(draw, typ):
-    value = draw(st.integers(0, 2 ** typ.width - 1))
-    return _pydrofoil.bitvector(typ.width, value)
 
 
 @st.composite
@@ -83,7 +79,10 @@ def gen_Union(draw, classes, strategies, machine):
         if len(value) > 0:
             return cls(*value)
         else:
-            return cls()
+            try:
+                return cls(())
+            except TypeError:
+                return cls() # TODO: this is ridiculous
     elif hasattr(value, 'sail_type') and isinstance(value.sail_type, _pydrofoil.sailtypes.Struct):
         values = [getattr(value, name) for name, _ in value.sail_type.fields]
         return cls(*values)
@@ -101,7 +100,10 @@ def gen_Union_default(classes, values, machine):
         if len(value) > 0:
             return cls(*value)
         else:
-            return cls()
+            try:
+                return cls(())
+            except TypeError:
+                return cls() # TODO: this is ridiculous
     elif hasattr(value, 'sail_type') and isinstance(value.sail_type, _pydrofoil.sailtypes.Struct):
         values = [getattr(value, name) for name, _ in value.sail_type.fields]
         return cls(*values)
@@ -129,52 +131,86 @@ def gen_FVec(draw, typ, machine):
 
 def hypothesis_from_pydrofoil_type(typ, machine):
     # takes a pydrofoil type and returns a hypothesis strategy
-    if isinstance(typ, sailtypes.SmallFixedBitVector):
-        return gen_bitvector(typ)
-    elif isinstance(typ, sailtypes.BigFixedBitVector):
-        return gen_bigbitvector(typ)
-    elif '.FVec' in str(typ):
-        return gen_FVec(typ, machine)
-    elif isinstance(typ, sailtypes.Bool):
-        return st.booleans()
-    elif isinstance(typ, sailtypes.MachineInt):
-        return st.integers(-2 * 63, 2 * 63 - 1)
-    elif isinstance(typ, sailtypes.Int):
-        return st.integers()
-    elif isinstance(typ, sailtypes.String):
-        return st.text(alphabet=st.characters(min_codepoint=0, max_codepoint=127))
-    elif isinstance(typ, sailtypes.Enum):
-        return gen_Enum(typ)
-    elif isinstance(typ, sailtypes.Tuple):
-        strategies = [
-            hypothesis_from_pydrofoil_type(elementtyp, machine) for elementtyp in typ
-        ]
-        return gen_Tuple(strategies)
-    elif isinstance(typ, sailtypes.Struct):
-        if len(typ.fields) == 1:
-            return hypothesis_from_pydrofoil_type(typ.fields[0][1], machine)
-        strategies = [
-            (hypothesis_from_pydrofoil_type(elementtyp, machine))
-            for (typs, elementtyp) in typ.fields
-        ]
-        name = typ.name
-        return gen_Struct(name, strategies, machine)
-    elif isinstance(typ, sailtypes.Union):
-        classes = [cls for (cls, constructor_typ) in typ.constructors]
-        strategies = [
-            hypothesis_from_pydrofoil_type(constructor_typ, machine)
-            for (cls, constructor_typ) in typ.constructors
-        ]
-        return gen_Union(classes, strategies, machine)
-    elif ".Vec" in str(typ):  # TODO: fix when pydrofoil is fixed
-        strategy = hypothesis_from_pydrofoil_type(typ.of, machine)
-        return gen_Vec(strategy)
-    elif typ.__class__.__name__ == "sailtypes.Unit": # TODO: fix when pydrofoil is fixed
-        return st.just(())
-    elif isinstance(typ, sailtypes.GenericBitVector):
-        return gen_genericbitvector(typ)
-    else:
-        assert False, "not implemented yet"
+    return BasePydrofoilStrategies(machine).hypothesis_from_pydrofoil_type(typ)
+
+class BasePydrofoilStrategies:
+    def __init__(self, machine):
+        self.machine = machine
+
+    def hypothesis_from_pydrofoil_type(self, typ):
+        machine = self.machine
+        if isinstance(typ, sailtypes.SmallFixedBitVector):
+            return self._gen_bitvector(typ)
+        elif isinstance(typ, sailtypes.BigFixedBitVector):
+            return gen_bigbitvector(typ)
+        elif '.FVec' in str(typ):
+            return gen_FVec(typ, machine)
+        elif isinstance(typ, sailtypes.Bool):
+            return st.booleans()
+        elif isinstance(typ, sailtypes.MachineInt):
+            return st.integers(-2 * 63, 2 * 63 - 1)
+        elif isinstance(typ, sailtypes.Int):
+            return st.integers()
+        elif isinstance(typ, sailtypes.String):
+            return st.text(alphabet=st.characters(min_codepoint=0, max_codepoint=127))
+        elif isinstance(typ, sailtypes.Enum):
+            return gen_Enum(typ)
+        elif isinstance(typ, sailtypes.Tuple):
+            strategies = [
+                hypothesis_from_pydrofoil_type(elementtyp, machine) for elementtyp in typ
+            ]
+            return gen_Tuple(strategies)
+        elif isinstance(typ, sailtypes.Struct):
+            if len(typ.fields) == 1:
+                return hypothesis_from_pydrofoil_type(typ.fields[0][1], machine)
+            strategies = [
+                (hypothesis_from_pydrofoil_type(elementtyp, machine))
+                for (typs, elementtyp) in typ.fields
+            ]
+            name = typ.name
+            return gen_Struct(name, strategies, machine)
+        elif isinstance(typ, sailtypes.Union):
+            meth = getattr(self, f'union_{typ.name}', None)
+            if meth is not None:
+                return self._gen_specific_union(meth, typ)
+            classes = [cls for (cls, constructor_typ) in typ.constructors]
+            strategies = [
+                hypothesis_from_pydrofoil_type(constructor_typ, machine)
+                for (cls, constructor_typ) in typ.constructors
+            ]
+            return gen_Union(classes, strategies, machine)
+        elif ".Vec" in str(typ):  # TODO: fix when pydrofoil is fixed
+            strategy = hypothesis_from_pydrofoil_type(typ.of, machine)
+            return gen_Vec(strategy)
+        elif typ.__class__.__name__ == "sailtypes.Unit": # TODO: fix when pydrofoil is fixed
+            return st.just(())
+        elif isinstance(typ, sailtypes.GenericBitVector):
+            return gen_genericbitvector(typ)
+        else:
+            assert False, "not implemented yet"
+
+    # _____________________________________________________
+    # composite methods with strange interface
+
+    @st.composite
+    def _gen_bitvector(draw, self, typ):
+        return self.gen_bitvector(draw, typ)
+
+    @st.composite
+    def _gen_specific_union(draw, self, meth, typ):
+        return meth(draw, typ)
+
+    # _____________________________________________________
+    # default implementations
+
+
+    def gen_bitvector(self, draw, typ):
+        value = draw(st.integers(0, 2 ** typ.width - 1))
+        return _pydrofoil.bitvector(typ.width, value)
+
+
+# _________________________________________________________
+
 
 def default_value(typ, machine):
     if isinstance(typ, sailtypes.SmallFixedBitVector):
@@ -224,15 +260,13 @@ def default_value(typ, machine):
         assert False, "not implemented yet"
 
 
-
 @st.composite
 def random_register_values(draw, machine, include_registers, always_default_registers):
     register_info = machine.register_info()
-    register_names_random = [(name, typ) for (name, typ) in register_info if name in include_registers]
-    for x in range(draw(st.integers(0, (len(register_info)-1)//2))):
-        register=register_info[draw(st.integers(0,(len(register_info)-1)))]
-        if register[0] not in always_default_registers:
-            register_names_random.append(register)
+    register_names_random = [(name, typ) for (name, typ) in register_info if (name in include_registers) and (name not in always_default_registers)]
+    register_no_default = [(name, typ) for (name, typ) in register_info if (name not in always_default_registers) and (name not in include_registers)]
+    register_names_random = register_names_random + list(draw(st.sets(st.sampled_from(register_no_default))))
+    
     register_names_default = [(name, typ) for (name, typ) in register_info if name not in register_names_random]
     registers_include = {name : draw(hypothesis_from_pydrofoil_type(typ, machine)) for (name, typ) in register_names_random}
     registers_default = {name : default_value(typ, machine) for (name, typ) in register_names_default}
