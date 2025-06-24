@@ -3,32 +3,6 @@ from hypothesis import given, strategies as st
 import _pydrofoil
 
 
-
-
-@st.composite
-def gen_bigbitvector(draw, typ):
-    # TODO: simplify when pydrofoil limitation is fixed
-    return _gen_huge_bitvector(draw, typ.width)
-
-def _gen_huge_bitvector(draw, width):
-    remaining_width = width
-    result = None
-    while remaining_width >= 64:
-        value = draw(st.integers(0, 2 ** 64 - 1))
-        bv = _pydrofoil.bitvector(64, value)
-        if result is None:
-            result = bv
-        else:
-            result = result @ bv
-        remaining_width -= 64
-    if remaining_width:
-        assert 0 <= remaining_width <= 63
-        value = draw(st.integers(0, 2 ** remaining_width - 1))
-        result = result @ _pydrofoil.bitvector(remaining_width, value)
-    assert len(result) == width
-    assert result is not None
-    return result
-
 def _gen_huge_bitvector_default( width):
     # TODO: remove again if pydrofoil bug is fixed
     remaining_width = width
@@ -46,48 +20,6 @@ def _gen_huge_bitvector_default( width):
     assert len(result) == width
     assert result is not None
     return result
-
-@st.composite
-def gen_genericbitvector(draw, typ):
-    width = draw(st.integers(0))
-    if width <= 64:
-        value = draw(st.integers(0, 2 ** width - 1))
-        return _pydrofoil.bitvector(width, value)
-    else:
-        return _gen_huge_bitvector(draw, width)
-
-@st.composite
-def gen_Enum(draw, typ):
-    return draw(st.sampled_from(typ.elements))
-
-
-@st.composite
-def gen_Tuple(draw, strategies):
-    l = [draw(strategy) for strategy in strategies]
-    return tuple(l)
-
-
-@st.composite
-def gen_Union(draw, classes, strategies, machine):
-    assert len(classes) == len(strategies)
-    index = draw(st.integers(0, len(classes) - 1))
-    cls_name = classes[index]
-    strategy = strategies[index]
-    value = draw(strategy)
-    cls = getattr(machine.types, cls_name)
-    if isinstance(value, tuple):
-        if len(value) > 0:
-            return cls(*value)
-        else:
-            try:
-                return cls(())
-            except TypeError:
-                return cls() # TODO: this is ridiculous
-    elif hasattr(value, 'sail_type') and isinstance(value.sail_type, _pydrofoil.sailtypes.Struct):
-        values = [getattr(value, name) for name, _ in value.sail_type.fields]
-        return cls(*values)
-    else:
-        return cls(value)
     
 
 def gen_Union_default(classes, values, machine):
@@ -112,15 +44,6 @@ def gen_Union_default(classes, values, machine):
 
 
 @st.composite
-def gen_Struct(draw, name, strategies, machine):
-    l = [draw(strategy) for strategy in strategies]
-    return getattr(machine.types, name)(*l)
-
-@st.composite
-def gen_Vec(draw, strategy):
-    return draw(st.lists(strategy))
-
-@st.composite
 def gen_FVec(draw, typ, machine):
     if not draw(st.booleans()):
         return [draw(hypothesis_from_pydrofoil_type(typ.of, machine))] * typ.length
@@ -142,25 +65,28 @@ class BasePydrofoilStrategies:
         if isinstance(typ, sailtypes.SmallFixedBitVector):
             return self._gen_bitvector(typ)
         elif isinstance(typ, sailtypes.BigFixedBitVector):
-            return gen_bigbitvector(typ)
+            return self._gen_bigbitvector(typ)
         elif '.FVec' in str(typ):
-            return gen_FVec(typ, machine)
+            return self._gen_FVec(typ, machine)
         elif isinstance(typ, sailtypes.Bool):
-            return st.booleans()
+            return self._gen_bool()
         elif isinstance(typ, sailtypes.MachineInt):
-            return st.integers(-2 * 63, 2 * 63 - 1)
+            return self._gen_MachineInt()
         elif isinstance(typ, sailtypes.Int):
-            return st.integers()
+            return self._gen_Int()
         elif isinstance(typ, sailtypes.String):
-            return st.text(alphabet=st.characters(min_codepoint=0, max_codepoint=127))
+            return self._gen_String()
         elif isinstance(typ, sailtypes.Enum):
-            return gen_Enum(typ)
+            return self._gen_Enum(typ)
         elif isinstance(typ, sailtypes.Tuple):
             strategies = [
                 hypothesis_from_pydrofoil_type(elementtyp, machine) for elementtyp in typ
             ]
-            return gen_Tuple(strategies)
+            return self._gen_Tuple(strategies)
         elif isinstance(typ, sailtypes.Struct):
+            meth = getattr(self, f'struct_{typ.name}', None)
+            if meth is not None:
+                return self._gen_specific_Struct(meth, typ)
             if len(typ.fields) == 1:
                 return hypothesis_from_pydrofoil_type(typ.fields[0][1], machine)
             strategies = [
@@ -168,24 +94,24 @@ class BasePydrofoilStrategies:
                 for (typs, elementtyp) in typ.fields
             ]
             name = typ.name
-            return gen_Struct(name, strategies, machine)
+            return self._gen_Struct(name, strategies, machine)
         elif isinstance(typ, sailtypes.Union):
             meth = getattr(self, f'union_{typ.name}', None)
             if meth is not None:
-                return self._gen_specific_union(meth, typ)
+                return self._gen_specific_Union(meth, typ)
             classes = [cls for (cls, constructor_typ) in typ.constructors]
             strategies = [
                 hypothesis_from_pydrofoil_type(constructor_typ, machine)
                 for (cls, constructor_typ) in typ.constructors
             ]
-            return gen_Union(classes, strategies, machine)
+            return self._gen_Union(classes, strategies, machine)
         elif ".Vec" in str(typ):  # TODO: fix when pydrofoil is fixed
             strategy = hypothesis_from_pydrofoil_type(typ.of, machine)
-            return gen_Vec(strategy)
+            return self._gen_Vec(strategy)
         elif typ.__class__.__name__ == "sailtypes.Unit": # TODO: fix when pydrofoil is fixed
-            return st.just(())
+            return self._gen_Unit()
         elif isinstance(typ, sailtypes.GenericBitVector):
-            return gen_genericbitvector(typ)
+            return self._gen_genericbitvector(typ)
         else:
             assert False, "not implemented yet"
 
@@ -195,10 +121,66 @@ class BasePydrofoilStrategies:
     @st.composite
     def _gen_bitvector(draw, self, typ):
         return self.gen_bitvector(draw, typ)
+    
+    @st.composite
+    def _gen_bigbitvector(draw, self, typ):
+        return self.gen_bigbitvector(draw, typ.width)
+    
+    @st.composite
+    def _gen_FVec(draw, self, typ, machine):
+        return self.gen_FVec(draw, typ, machine)
+    
+    @st.composite
+    def _gen_bool(draw, self):
+        return self.gen_bool(draw)
 
     @st.composite
-    def _gen_specific_union(draw, self, meth, typ):
+    def _gen_MachineInt(draw, self):
+        return self.gen_MachineInt(draw)
+    
+    @st.composite
+    def _gen_Int(draw, self):
+        return self.gen_Int(draw)
+    
+    @st.composite
+    def _gen_String(draw, self):
+        return self.gen_String(draw)
+    
+    @st.composite
+    def _gen_Enum(draw, self, typ):
+        return self.gen_Enum(draw, typ)
+    
+    @st.composite
+    def _gen_Tuple(draw, self, strategies):
+        return self.gen_Tuple(draw, strategies)
+    
+    @st.composite
+    def _gen_Struct(draw, self, classes, strategies, machine):
+        return self.gen_Struct(draw, classes, strategies, machine)
+    
+    @st.composite
+    def _gen_specific_Struct(draw, self, meth, typ):
         return meth(draw, typ)
+    
+    @st.composite
+    def _gen_Union(draw, self, classes, strategies, machine):
+        return self.gen_Union(draw, classes, strategies, machine)
+    
+    @st.composite
+    def _gen_specific_Union(draw, self, meth, typ):
+        return meth(draw, typ)
+    
+    @st.composite
+    def _gen_Vec(draw, self, strategy):
+            return self.gen_Vec(draw, strategy)
+        
+    @st.composite
+    def _gen_Unit(draw, self):
+        return self.gen_Unit(draw)
+    
+    @st.composite
+    def _gen_genericbitvector(draw, self, typ):
+        return self.gen_genericbitvector(draw)
 
     # _____________________________________________________
     # default implementations
@@ -208,6 +190,91 @@ class BasePydrofoilStrategies:
         value = draw(st.integers(0, 2 ** typ.width - 1))
         return _pydrofoil.bitvector(typ.width, value)
 
+    def gen_bigbitvector(self, draw, width):
+        # TODO: simplify when pydrofoil limitation is fixed
+        remaining_width = width
+        result = None
+        while remaining_width >= 64:
+            value = draw(st.integers(0, 2 ** 64 - 1))
+            bv = _pydrofoil.bitvector(64, value)
+            if result is None:
+                result = bv
+            else:
+                result = result @ bv
+            remaining_width -= 64
+        if remaining_width:
+            assert 0 <= remaining_width <= 63
+            value = draw(st.integers(0, 2 ** remaining_width - 1))
+            result = result @ _pydrofoil.bitvector(remaining_width, value)
+        assert len(result) == width
+        assert result is not None
+        return result
+    
+    def gen_FVec(self, draw, typ, machine):
+        if not draw(st.booleans()):
+            return [draw(hypothesis_from_pydrofoil_type(typ.of, machine))] * typ.length
+        res = []
+        for i in range(typ.length):
+            res.append(draw(hypothesis_from_pydrofoil_type(typ.of, machine)))
+        return res
+    
+    def gen_bool(self, draw):
+        return draw(st.booleans())
+    
+    def gen_MachineInt(self, draw):
+        return draw(st.integers(-2 * 63, 2 * 63 - 1))
+    
+    def gen_Int(self, draw):
+        return draw(st.integers(-2 * 63, 2 * 63 - 1))
+    
+    def gen_String(self, draw):
+        return draw(st.text(alphabet=st.characters(min_codepoint=0, max_codepoint=127)))
+    
+    def gen_Enum(self, draw, typ):
+        return draw(st.sampled_from(typ.elements))
+    
+    def gen_Tuple(self, draw, strategies):
+        l = [draw(strategy) for strategy in strategies]
+        return tuple(l)
+    
+    def gen_Struct(self, draw, name, strategies, machine):
+        l = [draw(strategy) for strategy in strategies]
+        return getattr(machine.types, name)(*l)
+    
+    def gen_Union(self, draw, classes, strategies, machine):
+        assert len(classes) == len(strategies)
+        index = draw(st.integers(0, len(classes) - 1))
+        cls_name = classes[index]
+        strategy = strategies[index]
+        value = draw(strategy)
+        cls = getattr(machine.types, cls_name)
+        if isinstance(value, tuple):
+            if len(value) > 0:
+                return cls(*value)
+            else:
+                try:
+                    return cls(())
+                except TypeError:
+                    return cls() # TODO: this is ridiculous
+        elif hasattr(value, 'sail_type') and isinstance(value.sail_type, _pydrofoil.sailtypes.Struct):
+            values = [getattr(value, name) for name, _ in value.sail_type.fields]
+            return cls(*values)
+        else:
+            return cls(value)
+        
+    def gen_Vec(self, draw, strategy):
+        return draw(st.lists(strategy))
+    
+    def gen_Unit(self, draw):
+        return draw(st.just(()))
+    
+    def gen_genericbitvector(self, draw):
+        width = draw(st.integers(0))
+        if width <= 64:
+            value = draw(st.integers(0, 2 ** width - 1))
+            return _pydrofoil.bitvector(width, value)
+        else:
+            return self.gen_bigbitvector(draw, width)
 
 # _________________________________________________________
 

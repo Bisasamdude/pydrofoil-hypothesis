@@ -72,6 +72,7 @@ def test_generate_Int(val):
 Stringtyp = m.types.exception.sail_type.constructors[1][1]
 Stringstrategy = pydrofoilhypothesis.hypothesis_from_pydrofoil_type(Stringtyp, m)
 
+
 @given(Stringstrategy)
 def test_generate_String(val):
     assert all(ord(c) <= 127 for c in val)
@@ -128,6 +129,13 @@ unionnames = [name for (name, tuples) in uniontyp.constructors]
 def test_generate_Union(val):
     assert val.__class__.__name__ in unionnames
     assert isinstance(val, m.types.ast)
+    
+uniontyp2 = m.types.PTW_Result.sail_type
+unionstrategy2 = pydrofoilhypothesis.hypothesis_from_pydrofoil_type(uniontyp2, m)
+
+@given(unionstrategy2)
+def test_other_union_not_changed(ptw_result):
+    assert isinstance(ptw_result, m.types.PTW_Result)
 
 
 structtyp = m.lowlevel.encdec_mul_op_backwards.sail_type.result
@@ -158,32 +166,10 @@ genericbitvectorstrategy = pydrofoilhypothesis.hypothesis_from_pydrofoil_type(ge
 @given(genericbitvectorstrategy)
 def test_generate_GenericBitVector(val):
     assert isinstance(val, _pydrofoil.bitvector)
+    
 
-def test_smoke_all_functions():
-    unsupported_types = set()
-    for funcname in dir(m.lowlevel):
-        func = getattr(m.lowlevel, funcname)
-        for argtype in func.sail_type.arguments:
-            try:
-                pydrofoilhypothesis.hypothesis_from_pydrofoil_type(argtype, m)
-            except AssertionError:
-                print(funcname, argtype)
-                unsupported_types.add(argtype)
-    assert not unsupported_types
 
-def test_smoke_all_classes():
-    unsupported_types = set()
-    for typename in dir(m.types):
-        cls = getattr(m.types, typename)
-        if not hasattr(cls, 'sail_type'):
-            continue
-        typ = cls.sail_type
-        try:
-            pydrofoilhypothesis.hypothesis_from_pydrofoil_type(typ, m)
-        except AssertionError:
-            print(typename, typ)
-            unsupported_types.add(typ)
-    assert not unsupported_types
+
     
 
 registerStrucTyp=[typ for (name,typ) in m.register_info() if name == 'misa']
@@ -264,8 +250,37 @@ def _find_all_sail_types():
 
 sailtyps = _find_all_sail_types()
 
+def test_smoke_all_functions():
+    unsupported_types = set()
+    for funcname in dir(m.lowlevel):
+        func = getattr(m.lowlevel, funcname)
+        for argtype in func.sail_type.arguments:
+            try:
+                pydrofoilhypothesis.hypothesis_from_pydrofoil_type(argtype, m)
+            except AssertionError:
+                print(funcname, argtype)
+                unsupported_types.add(argtype)
+    assert not unsupported_types
+
+def test_smoke_all_classes():
+    unsupported_types = set()
+    for typename in dir(m.types):
+        cls = getattr(m.types, typename)
+        
+        if not hasattr(cls, 'sail_type'):
+            continue
+        typ = cls.sail_type
+        try:
+            pydrofoilhypothesis.hypothesis_from_pydrofoil_type(typ, m)
+        except AssertionError:
+            print(typename, typ)
+            unsupported_types.add(typ)
+    assert not unsupported_types
+
 @given(st.data())
 def test_smoke_more(data):
     typ = data.draw(st.sampled_from(sailtyps))
     value = data.draw(pydrofoilhypothesis.hypothesis_from_pydrofoil_type(typ, m))
     pydrofoilhypothesis.default_value(typ, m)
+    
+    
