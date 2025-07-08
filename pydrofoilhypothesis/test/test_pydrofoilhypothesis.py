@@ -129,9 +129,11 @@ unionnames = [name for (name, tuples) in uniontyp.constructors]
 def test_generate_Union(val):
     assert val.__class__.__name__ in unionnames
     assert isinstance(val, m.types.ast)
-    
+
+
 uniontyp2 = m.types.PTW_Result.sail_type
 unionstrategy2 = pydrofoilhypothesis.hypothesis_from_pydrofoil_type(uniontyp2, m)
+
 
 @given(unionstrategy2)
 def test_other_union_not_changed(ptw_result):
@@ -160,27 +162,37 @@ def test_generate_Vec(val):
     for element in val:
         assert element is True or element is False
 
-genericbitvectortyp = getattr(m.lowlevel, 'MemoryOpResult_add_meta<b>').sail_type.arguments[0].constructors[1][1]
-genericbitvectorstrategy = pydrofoilhypothesis.hypothesis_from_pydrofoil_type(genericbitvectortyp, m)
+
+genericbitvectortyp = (
+    getattr(m.lowlevel, "MemoryOpResult_add_meta<b>")
+    .sail_type.arguments[0]
+    .constructors[1][1]
+)
+genericbitvectorstrategy = pydrofoilhypothesis.hypothesis_from_pydrofoil_type(
+    genericbitvectortyp, m
+)
+
 
 @given(genericbitvectorstrategy)
 def test_generate_GenericBitVector(val):
     assert isinstance(val, _pydrofoil.bitvector)
-    
 
 
+registerStrucTyp = [typ for (name, typ) in m.register_info() if name == "misa"]
+registerStrucStrategy = pydrofoilhypothesis.hypothesis_from_pydrofoil_type(
+    registerStrucTyp[0], m
+)
 
-    
 
-registerStrucTyp=[typ for (name,typ) in m.register_info() if name == 'misa']
-registerStrucStrategy=pydrofoilhypothesis.hypothesis_from_pydrofoil_type(registerStrucTyp[0], m)
 @given(registerStrucStrategy)
 def test_registerStruc(val):
     assert isinstance(val, _pydrofoil.bitvector)
     assert len(val) == 64
 
-FVecTyp = dict(m.register_info())['mhpmevent']
+
+FVecTyp = dict(m.register_info())["mhpmevent"]
 FVecStrategy = pydrofoilhypothesis.hypothesis_from_pydrofoil_type(FVecTyp, m)
+
 
 @given(FVecStrategy)
 def test_FVec(val):
@@ -189,26 +201,38 @@ def test_FVec(val):
     assert {len(element) for element in val} == {64}
 
 
-FVecTypTLB = dict(m.register_info())['tlb']
+FVecTypTLB = dict(m.register_info())["tlb"]
 FVecTLBStrategy = pydrofoilhypothesis.hypothesis_from_pydrofoil_type(FVecTypTLB, m)
+
 
 @given(FVecTLBStrategy)
 def test_FVecTLB(val):
     assert len(val) == 64
 
+
 def test_default_register_values():
     for name, typ in m.register_info():
-        pydrofoilhypothesis.default_value(typ, m) # does not crash
+        pydrofoilhypothesis.default_value(typ, m)  # does not crash
+
 
 def test_default_register_values2():
     for name, typ in m.register_info():
-        typ_default = pydrofoilhypothesis.default_value(typ, m) 
-        typ_normal = pydrofoilhypothesis.hypothesis_from_pydrofoil_type(typ, m).example()
+        typ_default = pydrofoilhypothesis.default_value(typ, m)
+        typ_normal = pydrofoilhypothesis.hypothesis_from_pydrofoil_type(
+            typ, m
+        ).example()
         assert typ_default.__class__ == typ_normal.__class__
+
 
 include_registers = [name for (name, typ) in m.register_info()[0:5]]
 always_default_registers = [name for (name, typ) in m.register_info()[7:8]]
-@given(pydrofoilhypothesis.random_register_values(m, include_registers, always_default_registers))    
+
+
+@given(
+    pydrofoilhypothesis.random_register_values(
+        m, include_registers, always_default_registers
+    )
+)
 def test_random_register_values(values):
     assert len(values) == len(m.register_info())
     for name, value in values.items():
@@ -216,28 +240,48 @@ def test_random_register_values(values):
         assert m.read_register(name) == value
 
 
+include_registers = [name for (name, typ) in m.register_info()[0:5]]
+always_default_registers = [name for (name, typ) in m.register_info()[0:2]]
+
+
+@given(
+    pydrofoilhypothesis.random_register_values(
+        m, include_registers, always_default_registers
+    )
+)
+def test_random_register_values(values):
+    assert values.get(always_default_registers[0]).unsigned() == 0
+
+
 @st.composite
 def random_register_values_random_include_exclude(draw, machine):
-    include_registers = draw(st.lists(st.sampled_from([name for (name, typ) in m.register_info()])))
-    always_default_registers = draw(st.lists(st.sampled_from([name for (name, typ) in m.register_info()])))
-    values = draw(pydrofoilhypothesis.random_register_values(machine, include_registers, always_default_registers))
+    include_registers = draw(
+        st.lists(st.sampled_from([name for (name, typ) in m.register_info()]))
+    )
+    always_default_registers = draw(
+        st.lists(st.sampled_from([name for (name, typ) in m.register_info()]))
+    )
+    values = draw(
+        pydrofoilhypothesis.random_register_values(
+            machine, include_registers, always_default_registers
+        )
+    )
     return values
-    
 
-        
-@given(random_register_values_random_include_exclude(m))    
+
+@given(random_register_values_random_include_exclude(m))
 def test_random_register_values_random_include_exclude(values):
     assert len(values) == len(m.register_info())
     for name, value in values.items():
         m.write_register(name, value)
         assert m.read_register(name) == value
-    
+
 
 def _find_all_sail_types():
     typs = set()
     for name in dir(m.types):
         value = getattr(m.types, name)
-        if hasattr(value, 'sail_type'):
+        if hasattr(value, "sail_type"):
             typs.add(value.sail_type)
     for name in dir(m.lowlevel):
         value = getattr(m.lowlevel, name)
@@ -248,7 +292,9 @@ def _find_all_sail_types():
     typs.sort(key=lambda element: len(str(element)))
     return typs
 
+
 sailtyps = _find_all_sail_types()
+
 
 def test_smoke_all_functions():
     unsupported_types = set()
@@ -262,12 +308,13 @@ def test_smoke_all_functions():
                 unsupported_types.add(argtype)
     assert not unsupported_types
 
+
 def test_smoke_all_classes():
     unsupported_types = set()
     for typename in dir(m.types):
         cls = getattr(m.types, typename)
-        
-        if not hasattr(cls, 'sail_type'):
+
+        if not hasattr(cls, "sail_type"):
             continue
         typ = cls.sail_type
         try:
@@ -277,10 +324,9 @@ def test_smoke_all_classes():
             unsupported_types.add(typ)
     assert not unsupported_types
 
+
 @given(st.data())
 def test_smoke_more(data):
     typ = data.draw(st.sampled_from(sailtyps))
     value = data.draw(pydrofoilhypothesis.hypothesis_from_pydrofoil_type(typ, m))
     pydrofoilhypothesis.default_value(typ, m)
-    
-    

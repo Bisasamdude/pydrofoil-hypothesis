@@ -49,3 +49,12 @@ machines brauchen eine reset-funktion
 # June 10
 
 Some<TLB> should be instantiatable with a struct instance
+
+# July 8
+
+```
+(bitvector(64, 0x0000000000000000), bitvector(64, 0x0000000000000000), bitvector(64, 0x0000000000000000), 9223372036854775808, False, ())
+(Pdb) cls
+<class 'PTW_Success'>
+throws overflowerror
+```
