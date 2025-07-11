@@ -102,7 +102,7 @@ class BasePydrofoilStrategies:
     def _gen_bigbitvector(
         draw: DrawFn, self, typ: sailtypes.BigFixedBitVector
     ) -> _pydrofoil.bitvector:
-        return self.gen_bigbitvector(draw, typ.width)
+        return self.gen_bigbitvector(draw, typ)
 
     @st.composite
     def _gen_FVec(
@@ -176,26 +176,10 @@ class BasePydrofoilStrategies:
         value = draw(st.integers(0, 2 ** typ.width - 1))
         return _pydrofoil.bitvector(typ.width, value)
 
-    def gen_bigbitvector(self, draw: DrawFn, width: int) -> _pydrofoil.bitvector:
-        """Generates a _pydrofoil.bitvector of width by composing multiple 64-bit segments"""
-        # TODO: simplify when pydrofoil limitation is fixed
-        remaining_width = width
-        result = None
-        while remaining_width >= 64:
-            value = draw(st.integers(0, 2 ** 64 - 1))
-            bv = _pydrofoil.bitvector(64, value)
-            if result is None:
-                result = bv
-            else:
-                result = result @ bv
-            remaining_width -= 64
-        if remaining_width:
-            assert 0 <= remaining_width <= 63
-            value = draw(st.integers(0, 2 ** remaining_width - 1))
-            result = result @ _pydrofoil.bitvector(remaining_width, value)
-        assert len(result) == width
-        assert result is not None
-        return result
+    def gen_bigbitvector(
+        self, draw: DrawFn, typ: sailtypes.BigFixedBitVector
+    ) -> _pydrofoil.bitvector:
+        return self.gen_bigbitvector(draw, typ.width)
 
     def gen_FVec(
         self, draw: DrawFn, typ, machine: _pydrofoil.RISCV64
@@ -279,7 +263,30 @@ class BasePydrofoilStrategies:
             value = draw(st.integers(0, 2 ** width - 1))
             return _pydrofoil.bitvector(width, value)
         else:
-            return self.gen_bigbitvector(draw, width)
+            return self._help_gen_bigbitvector(draw, width)
+        
+    # _________________________________________________________
+        
+    def _help_gen_bigbitvector(self, draw: DrawFn, width: int) -> _pydrofoil.bitvector:
+        """Generates a _pydrofoil.bitvector of width by composing multiple 64-bit segments"""
+        # TODO: simplify when pydrofoil limitation is fixed
+        remaining_width = width
+        result = None
+        while remaining_width >= 64:
+            value = draw(st.integers(0, 2 ** 64 - 1))
+            bv = _pydrofoil.bitvector(64, value)
+            if result is None:
+                result = bv
+            else:
+                result = result @ bv
+            remaining_width -= 64
+        if remaining_width:
+            assert 0 <= remaining_width <= 63
+            value = draw(st.integers(0, 2 ** remaining_width - 1))
+            result = result @ _pydrofoil.bitvector(remaining_width, value)
+        assert len(result) == width
+        assert result is not None
+        return result
 
 
 # _________________________________________________________
